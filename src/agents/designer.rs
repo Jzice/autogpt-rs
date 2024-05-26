@@ -43,7 +43,6 @@ use crate::traits::functions::Functions;
 use anyhow::Result;
 use colored::*;
 use gems::utils::load_and_encode_image;
-use gems::Client;
 use getimg::client::Client as ImgClient;
 use getimg::utils::save_image;
 use std::borrow::Cow;
@@ -61,8 +60,6 @@ pub struct DesignerGPT {
     agent: AgentGPT,
     /// Represents a GetIMG client for generating images from text prompts.
     img_client: ImgClient,
-    /// Represents a Gemini client for interacting with Gemini API.
-    client: Client,
 }
 
 impl DesignerGPT {
@@ -110,7 +107,8 @@ impl DesignerGPT {
             .unwrap_or("gemini-pro-vision".to_string())
             .to_owned();
         let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
+        // let client = Client::new(&api_key, &model);
+        let client = Ollama::default();
 
         info!(
             "{}",
@@ -155,27 +153,27 @@ impl DesignerGPT {
         let negative_prompt = Some("Disfigured, cartoon, blurry");
 
         // Generate image from text prompt
-        let text_response = self
-            .img_client
-            .generate_image_from_text(
-                &text_prompt,
-                1024,
-                1024,
-                5,
-                "jpeg",
-                negative_prompt,
-                Some(512),
-            )
-            .await?;
+        // let text_response = self
+        //     .img_client
+        //     .generate_image_from_text(
+        //         &text_prompt,
+        //         1024,
+        //         1024,
+        //         5,
+        //         "jpeg",
+        //         negative_prompt,
+        //         Some(512),
+        //     )
+        //     .await?;
 
         // Save text response image to file
-        save_image(&text_response.image, &img_path).unwrap();
+        // save_image(&text_response.image, &img_path).unwrap();
 
-        info!(
-            "[*] {:?}: Image saved at {}",
-            self.agent.position(),
-            img_path
-        );
+        // info!(
+        //     "[*] {:?}: Image saved at {}",
+        //     self.agent.position(),
+        //     img_path
+        // );
 
         Ok(())
     }
@@ -201,27 +199,21 @@ impl DesignerGPT {
     /// - Returns the generated text description of the image.
     ///
     pub async fn generate_text_from_image(&mut self, image_path: &str) -> Result<String> {
-        let base64_image_data = match load_and_encode_image(image_path) {
-            Ok(data) => data,
-            Err(_) => {
-                debug!("[*] {:?}: Error loading image!", self.agent.position());
-                "".to_string()
-            }
-        };
+        if let Ok(response) = self.agent.generate_text_from_image(WEB_DESIGNER_PROMPT, image_path).await {
+            debug!(
+                "[*] {:?}: Got Image Description: {:?}",
+                self.agent.position(),
+                response
+            );
+            Ok(response)
+        } else {
+            debug!(
+                "[*] {:?}: Got Image Description !!!Failure!!!",
+                self.agent.position(),
+            );
+            Default::default()
+        }
 
-        let response = self
-            .client
-            .generate_content_with_image(WEB_DESIGNER_PROMPT, &base64_image_data)
-            .await
-            .unwrap();
-
-        debug!(
-            "[*] {:?}: Got Image Description: {:?}",
-            self.agent.position(),
-            response
-        );
-
-        Ok(response)
     }
 
     /// Compares text prompts to determine similarity.

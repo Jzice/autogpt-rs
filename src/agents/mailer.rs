@@ -10,7 +10,6 @@ use crate::traits::agent::Agent;
 use crate::traits::functions::Functions;
 use anyhow::Result;
 use colored::*;
-use gems::Client;
 use nylas::client::Nylas;
 use nylas::messages::Message;
 use std::env::var;
@@ -22,8 +21,6 @@ pub struct MailerGPT {
     agent: AgentGPT,
     /// Represents the Nylas client for interacting with email services.
     nylas_client: Nylas,
-    /// Represents the Gemini client for interacting with Gemini API.
-    client: Client,
 }
 
 impl MailerGPT {
@@ -54,12 +51,6 @@ impl MailerGPT {
             .await
             .unwrap();
 
-        let model = var("GEMINI_MODEL")
-            .unwrap_or("gemini-pro".to_string())
-            .to_owned();
-        let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
-
         info!(
             "{}",
             format!("[*] {:?}: 🛠️  Getting ready!", agent.position(),)
@@ -70,7 +61,6 @@ impl MailerGPT {
         Self {
             agent,
             nylas_client,
-            client,
         }
     }
 
@@ -125,24 +115,20 @@ impl MailerGPT {
     ///
     pub async fn generate_text_from_emails(&mut self, prompt: &str) -> Result<String> {
         let emails = self.get_latest_emails().await.unwrap();
-
+        let email_prompt = format!("User Request:{}\n\nEmails:{:?}", prompt, emails);
         // TODO: Parse emails bodies cz Gemini ain't geminiin'
-        let gemini_response: String = match self
-            .client
-            .generate_content(&format!("User Request:{}\n\nEmails:{:?}", prompt, emails))
-            .await
-        {
-            Ok(response) => response,
+        let gpt_resp = match self.agent.generate(&email_prompt).await {
+            Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
 
         info!(
             "[*] {:?}: Got Response: {:?}",
             self.agent.position(),
-            gemini_response
+            gpt_resp
         );
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 }
 

@@ -24,20 +24,23 @@ reqwest = { version = "0.12.2", features = ["json"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 tracing = "0.1.40"
-getimg = { version = "0.0.1", optional = true }
+getimg = { version = "0.0.1", optional = false }
 nylas = { version = "0.0.8", optional = true }
 webbrowser = "0.8.13"
 clap = { version = "4.5.4", features = ["derive"], optional = true }
 tokio = { version = "1.37.0", default-features = false }
 tracing-subscriber = { version = "0.3.18", features = ["std"], optional = true }
 colored = "2.1.0"
+ollama-rs = "0.1.9"
+base64 = "0.22.1"
+image-base64 = "0.1.0"
 
 [dev-dependencies]
 tokio = { version = "1.37.0", features = ["full"] }
 
 [features]
 default = []
-img = ["getimg"]
+# img = ["getimg"]
 mail = ["nylas"]
 cli = ["clap", "tracing-subscriber"]
 

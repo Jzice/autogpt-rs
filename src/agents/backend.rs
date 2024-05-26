@@ -51,7 +51,6 @@ use std::thread::sleep;
 
 use anyhow::Result;
 use colored::*;
-use gems::Client;
 use reqwest::Client as ReqClient;
 use std::borrow::Cow;
 use std::env::var;
@@ -67,8 +66,6 @@ pub struct BackendGPT {
     workspace: Cow<'static, str>,
     /// Represents the GPT agent responsible for handling backend tasks.
     agent: AgentGPT,
-    /// Represents a Gemini client for interacting with Gemini API.
-    client: Client,
     /// Represents a client for making HTTP requests.
     req_client: ReqClient,
     /// Represents the bugs found in the codebase, if any.
@@ -166,11 +163,6 @@ impl BackendGPT {
         };
 
         let agent: AgentGPT = AgentGPT::new_borrowed(objective, position);
-        let model = var("GEMINI_MODEL")
-            .unwrap_or("gemini-pro".to_string())
-            .to_owned();
-        let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
         info!(
             "{}",
             format!("[*] {:?}: 🛠️  Getting ready!", agent.position(),)
@@ -186,7 +178,6 @@ impl BackendGPT {
         Self {
             workspace: workspace.into(),
             agent,
-            client,
             req_client,
             bugs: None,
             language,
@@ -242,7 +233,7 @@ impl BackendGPT {
             WEBSERVER_CODE_PROMPT, template, tasks.description
         );
 
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate( request).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
@@ -260,14 +251,14 @@ impl BackendGPT {
             _ => panic!("Unsupported language, consider open an Issue/PR"),
         };
 
-        fs::write(backend_path, gemini_response.clone())?;
+        fs::write(backend_path, gpt_resp.clone())?;
 
-        tasks.backend_code = Some(gemini_response.clone().into());
+        tasks.backend_code = Some(gpt_resp.clone().into());
 
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Asynchronously improves existing backend code based on tasks.
@@ -300,9 +291,8 @@ impl BackendGPT {
             tasks.clone().backend_code.unwrap_or_default(),
             tasks.description
         );
-
-        let gemini_response: String = match self.client.generate_content(&request).await {
-            Ok(response) => strip_code_blocks(&response),
+        let gpt_resp = match self.agent.generate(request).await {
+            Ok(resp) => strip_code_blocks(&resp),
             Err(_err) => Default::default(),
         };
 
@@ -321,14 +311,14 @@ impl BackendGPT {
 
         debug!("[*] {:?}: {:?}", self.agent.position(), backend_path);
 
-        fs::write(backend_path, gemini_response.clone())?;
+        fs::write(backend_path, gpt_resp.clone())?;
 
-        tasks.backend_code = Some(gemini_response.clone().into());
+        tasks.backend_code = Some(gpt_resp.clone().into());
 
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Asynchronously fixes bugs in the backend code based on tasks.
@@ -363,9 +353,10 @@ impl BackendGPT {
             tasks.clone().backend_code.unwrap(),
             self.bugs.clone().unwrap()
         );
-
-        let gemini_response: String = match self.client.generate_content(&request).await {
-            Ok(response) => strip_code_blocks(&response),
+        let gemini_response = match self.agent.generate(
+            request
+        ).await {
+            Ok(resp) => strip_code_blocks(&resp),
             Err(_err) => Default::default(),
         };
 
@@ -433,8 +424,9 @@ impl BackendGPT {
             "{}\n\nHere is the backend code with all routes:{}",
             API_ENDPOINTS_PROMPT, backend_code
         );
-
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate(
+            request
+        ).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
@@ -442,7 +434,7 @@ impl BackendGPT {
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Accessor method to retrieve the agent associated with BackendGPT.

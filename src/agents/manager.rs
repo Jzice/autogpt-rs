@@ -17,7 +17,6 @@ use crate::traits::functions::Functions;
 use anyhow::Result;
 use colored::*;
 use colored::*;
-use gems::Client;
 use std::env::var;
 use tracing::info;
 
@@ -98,8 +97,6 @@ pub struct ManagerGPT {
     language: &'static str,
     /// Represents a collection of GPT agents managed by the manager.
     agents: Vec<AgentType>,
-    /// Represents a client for interacting with external services.
-    client: Client,
 }
 
 impl ManagerGPT {
@@ -151,19 +148,11 @@ impl ManagerGPT {
                 .bold()
         );
 
-        let model = var("GEMINI_MODEL")
-            .unwrap_or("gemini-pro".to_string())
-            .to_owned();
-
-        let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
-
         Self {
             agent,
             tasks,
             language,
             agents,
-            client,
         }
     }
 
@@ -210,12 +199,11 @@ impl ManagerGPT {
     /// - Adds default agents to the collection if it is empty.
     ///
     pub async fn execute_prompt(&self, prompt: String) -> Result<String> {
-        let gemini_response: String = match self.client.clone().generate_content(&prompt).await {
+        let resp = match self.agent.generate(prompt).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
-
-        Ok(gemini_response)
+        Ok(resp)
     }
 
     /// Asynchronously executes the tasks described by the user request.
@@ -270,8 +258,19 @@ impl ManagerGPT {
         }
 
         for mut agent in self.agents.clone() {
-            let request_prompt = format!("{}\n\n\n\nUser Request: {}\n\nAgent Role: {}\nProgramming Language: {}\nFramework: {}\n",
-                MANAGER_PROMPT, self.tasks.description.clone(), agent.position(),language, framework);
+            let request_prompt = format!(r#"
+                {}
+                User Request: {}
+                Agent Role: {}
+                Programming Language: {}
+                Framework: {}
+                "#, 
+                MANAGER_PROMPT, 
+                self.tasks.description.clone(), 
+                agent.position(),
+                language, 
+                framework
+            );
 
             let request = self.execute_prompt(request_prompt).await?;
 

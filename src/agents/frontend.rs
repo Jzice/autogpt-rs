@@ -45,7 +45,6 @@ use crate::traits::agent::Agent;
 use crate::traits::functions::Functions;
 use anyhow::Result;
 use colored::*;
-use gems::Client;
 use reqwest::Client as ReqClient;
 use std::borrow::Cow;
 use std::env::var;
@@ -64,8 +63,6 @@ pub struct FrontendGPT {
     workspace: Cow<'static, str>,
     /// Represents the GPT agent responsible for handling frontend tasks.
     agent: AgentGPT,
-    /// Represents a Gemini client for interacting with Gemini API.
-    client: Client,
     /// Represents a client for sending HTTP requests.
     req_client: ReqClient,
     /// Represents the bugs found in the code.
@@ -164,11 +161,6 @@ impl FrontendGPT {
             _ => panic!("Unsupported language, consider open an Issue/PR"),
         };
         let agent: AgentGPT = AgentGPT::new_borrowed(objective, position);
-        let model = var("GEMINI_MODEL")
-            .unwrap_or("gemini-pro".to_string())
-            .to_owned();
-        let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
 
         info!(
             "{}",
@@ -185,7 +177,6 @@ impl FrontendGPT {
         Self {
             workspace: workspace.into(),
             agent,
-            client,
             req_client,
             bugs: None,
             language,
@@ -234,13 +225,11 @@ impl FrontendGPT {
         debug!("[*] {:?}: {:?}", self.agent.position(), full_path);
 
         let template = fs::read_to_string(full_path)?;
-
         let request: String = format!(
             "{}\n\nCode Template: {}\nProject Description: {}",
             FRONTEND_CODE_PROMPT, template, tasks.description
         );
-
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate(request).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
@@ -258,14 +247,14 @@ impl FrontendGPT {
             _ => panic!("Unsupported language, consider open an Issue/PR"),
         };
 
-        fs::write(frontend_path, gemini_response.clone())?;
+        fs::write(frontend_path, gpt_resp.clone())?;
 
-        tasks.frontend_code = Some(gemini_response.clone().into());
+        tasks.frontend_code = Some(gpt_resp.clone().into());
 
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Asynchronously improves existing frontend code based on tasks.
@@ -298,7 +287,7 @@ impl FrontendGPT {
             tasks.description
         );
 
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate(request).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
@@ -318,14 +307,14 @@ impl FrontendGPT {
 
         debug!("[*] {:?}: {:?}", self.agent.position(), frontend_path);
 
-        fs::write(frontend_path, gemini_response.clone())?;
+        fs::write(frontend_path, gpt_resp.clone())?;
 
-        tasks.frontend_code = Some(gemini_response.clone().into());
+        tasks.frontend_code = Some(gpt_resp.clone().into());
 
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Asynchronously fixes bugs in the frontend code based on tasks.
@@ -357,8 +346,7 @@ impl FrontendGPT {
             tasks.clone().frontend_code.unwrap(),
             self.bugs.clone().unwrap()
         );
-
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate(request).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
@@ -376,14 +364,14 @@ impl FrontendGPT {
             _ => panic!("Unsupported language, consider open an Issue/PR"),
         };
 
-        fs::write(frontend_path, gemini_response.clone())?;
+        fs::write(frontend_path, gpt_resp.clone())?;
 
-        tasks.frontend_code = Some(gemini_response.clone().into());
+        tasks.frontend_code = Some(gpt_resp.clone().into());
 
         self.agent.update(Status::Completed);
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Retrieves the GPT agent associated with FrontendGPT.

@@ -44,7 +44,6 @@ use crate::traits::agent::Agent;
 use crate::traits::functions::Functions;
 use anyhow::Result;
 use colored::*;
-use gems::Client;
 use reqwest::Client as ReqClient;
 use std::borrow::Cow;
 use std::env::var;
@@ -62,8 +61,6 @@ pub struct ArchitectGPT {
     workspace: Cow<'static, str>,
     /// Represents the GPT agent responsible for handling architectural tasks.
     agent: AgentGPT,
-    /// Represents a Gemini client for interacting with Gemini API.
-    client: Client,
     /// Represents a client for making HTTP requests.
     req_client: ReqClient,
 }
@@ -108,11 +105,7 @@ impl ArchitectGPT {
         }
 
         let agent: AgentGPT = AgentGPT::new_borrowed(objective, position);
-        let model = var("GEMINI_MODEL")
-            .unwrap_or("gemini-pro".to_string())
-            .to_owned();
-        let api_key = var("GEMINI_API_KEY").unwrap_or_default().to_owned();
-        let client = Client::new(&api_key, &model);
+
         info!(
             "{}",
             format!("[*] {:?}: 🛠️  Getting ready!", agent.position(),)
@@ -128,7 +121,6 @@ impl ArchitectGPT {
         Self {
             workspace: workspace.into(),
             agent,
-            client,
             req_client,
         }
     }
@@ -162,10 +154,11 @@ impl ArchitectGPT {
         );
 
         // use prompts scope
-        let gemini_response: Scope = match self.client.generate_content(&request).await {
+        let gemini_response: Scope = match self.agent.generate(request).await {
             Ok(response) => {
                 serde_json::from_str(&extract_json_string(&response).unwrap_or_default())?
             }
+            // Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
 
@@ -203,19 +196,17 @@ impl ArchitectGPT {
             "{}\n\nHere is the Project Description:{}",
             ARCHITECT_ENDPOINTS_PROMPT, tasks.description
         );
-
-        let gemini_response: Vec<Cow<'static, str>> =
-            match self.client.generate_content(&request).await {
-                Ok(response) => {
-                    debug!(
-                        "[*] {:?}: Got Response {:?}",
-                        self.agent.position(),
-                        response
-                    );
-                    serde_json::from_str(&extract_array(&response).unwrap_or_default())?
-                }
-                Err(_err) => Default::default(),
-            };
+        let gemini_response = match self.agent.generate(request).await {
+            Ok(response) => {
+                debug!(
+                    "[*] {:?}: Got Response {:?}",
+                    self.agent.position(),
+                    response
+                );
+                serde_json::from_str(&extract_array(&response).unwrap_or_default())?
+            }
+            Err(_err) => Default::default(),
+        };
 
         tasks.urls = Some(gemini_response);
         self.agent.update(Status::InUnitTesting);
@@ -245,17 +236,20 @@ impl ArchitectGPT {
     pub async fn generate_diagram(&mut self, tasks: &mut Tasks) -> Result<String> {
         let request: String = format!(
             "{}\n\nUser Request:{}",
-            ARCHITECT_DIAGRAM_PROMPT, tasks.description
+            ARCHITECT_DIAGRAM_PROMPT, 
+            tasks.description
         );
 
-        let gemini_response: String = match self.client.generate_content(&request).await {
+        let gpt_resp = match self.agent.generate(
+            request
+        ).await {
             Ok(response) => strip_code_blocks(&response),
             Err(_err) => Default::default(),
         };
 
         debug!("[*] {:?}: {:?}", self.agent.position(), self.agent);
 
-        Ok(gemini_response)
+        Ok(gpt_resp)
     }
 
     /// Retrieves a reference to the agent.

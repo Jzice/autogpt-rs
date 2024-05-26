@@ -3,6 +3,11 @@
 
 use crate::common::utils::{Communication, Status};
 use crate::traits::agent::Agent;
+use crate::gpt_client::GPTType;
+use colored::*;
+use tracing::{debug, info};
+
+use anyhow::Result;
 use std::borrow::Cow;
 
 /// Represents an agent with specific characteristics.
@@ -16,6 +21,8 @@ pub struct AgentGPT {
     status: Status,
     /// Memory containing exchanged communications.
     memory: Vec<Communication>,
+    /// gpt client
+    gpt_client: GPTType,
 }
 
 impl AgentGPT {
@@ -44,6 +51,7 @@ impl AgentGPT {
             position: Cow::Owned(position),
             status: Default::default(),
             memory: Default::default(),
+            gpt_client: Default::default(),
         }
     }
 
@@ -63,8 +71,25 @@ impl AgentGPT {
             position: Cow::Borrowed(position),
             status: Default::default(),
             memory: Default::default(),
+            gpt_client: Default::default(),
         }
     }
+
+    /// Generate text with gpt 
+    pub async fn generate(&self, prompt: String) -> Result<String> {
+
+        debug!(
+            "{}",
+            format!(
+                "[*] generate with prompt: {:?}",
+                prompt
+            )
+            .bright_white()
+            .bold()
+        );
+        self.gpt_client.generate(prompt).await
+    }
+
 }
 
 impl Agent for AgentGPT {
@@ -84,6 +109,7 @@ impl Agent for AgentGPT {
             position,
             status: Default::default(),
             memory: Default::default(),
+            gpt_client: Default::default(),
         }
     }
 
@@ -131,4 +157,5 @@ impl Agent for AgentGPT {
     fn memory(&self) -> &Vec<Communication> {
         &self.memory
     }
+
 }

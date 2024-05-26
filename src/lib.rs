@@ -5,6 +5,7 @@ pub mod agents;
 pub mod common;
 pub mod prompts;
 pub mod traits;
+pub mod gpt_client;
 
 #[cfg(feature = "cli")]
 pub mod cli;
